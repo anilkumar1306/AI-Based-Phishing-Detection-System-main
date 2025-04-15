@@ -1,4 +1,7 @@
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Disable GPU to avoid CUDA errors
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Keep for compatibility
+
 import numpy as np
 import pickle
 import re
@@ -6,9 +9,6 @@ import requests
 from flask import Flask, render_template, request, jsonify
 import tensorflow as tf
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-
-# Disable OneDNN optimization (for TensorFlow compatibility)
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 app = Flask(__name__)
 
@@ -21,7 +21,7 @@ with open(tokenizer_path, 'rb') as f:
     tokenizer = pickle.load(f)
 
 vocab_size = len(tokenizer.word_index) + 1
-max_len = 200  # Updated to match the Keras models' training setup
+max_len = 200
 
 print(f"[INFO] Tokenizer loaded successfully. Vocabulary size: {vocab_size}")
 
@@ -41,14 +41,13 @@ headers = {'x-apikey': VT_API_KEY}
 # Preprocess text
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r'[^a-zA-Z0-9\s]', '', text)  # Remove special characters
+    text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
     return text
 
 # Check URLs using VirusTotal
 def check_virustotal(content):
     urls = re.findall(r'https?://\S+', content)
     results = {}
-
     for url in urls:
         url_id = requests.utils.quote(url, safe='')
         response = requests.get(
@@ -59,7 +58,6 @@ def check_virustotal(content):
             results[url] = response.json().get('data', {}).get('attributes', {}).get('last_analysis_stats')
         else:
             results[url] = f"Error: {response.status_code}"
-
     return results
 
 @app.route('/about')
@@ -91,12 +89,12 @@ def predict():
     lstm_pred = lstm_model.predict(padded, verbose=0)[0][0]
     rnn_pred = rnn_model.predict(padded, verbose=0)[0][0]
 
-    # Compute ensemble score with weights from the new code
+    # Compute ensemble score
     weights = [0.33, 0.33, 0.34]
     ensemble_score = weights[0] * cnn_pred + weights[1] * lstm_pred + weights[2] * rnn_pred
-    threshold = 0.5  # Consistent with the test case in the new code
+    threshold = 0.5
 
-    # Prepare predictions dictionary
+    # Prepare predictions
     predictions = {
         'cnn': {
             'prediction': 'phishing' if cnn_pred > threshold else 'legitimate',
@@ -125,4 +123,4 @@ def predict():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True)  # Disable reloader to avoid TensorFlow conflicts
