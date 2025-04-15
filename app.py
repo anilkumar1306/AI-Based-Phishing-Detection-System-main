@@ -60,41 +60,19 @@ def check_virustotal(content):
             results[url] = f"Error: {response.status_code}"
     return results
 
-@app.route('/about')
-def about():
-    return render_template('about.html')
-
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-@app.route('/team')
-def team():
-    return render_template('team.html')
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    if 'email' not in request.form:
-        return jsonify({'error': 'No email provided'}), 400
-
-    email_content = request.form['email']
-    processed_text = preprocess_text(email_content)
-
-    # Tokenize and pad
+# Updated prediction function
+def predict_email(email_text, cnn_model, lstm_model, rnn_model, tokenizer, max_len=200, threshold=0.5):
+    processed_text = preprocess_text(email_text)
     sequence = tokenizer.texts_to_sequences([processed_text])
-    padded = pad_sequences(sequence, maxlen=max_len, padding='post', truncating='post')
+    padded_sequence = pad_sequences(sequence, maxlen=max_len, padding='post', truncating='post')
 
-    # Make predictions
-    cnn_pred = cnn_model.predict(padded, verbose=0)[0][0]
-    lstm_pred = lstm_model.predict(padded, verbose=0)[0][0]
-    rnn_pred = rnn_model.predict(padded, verbose=0)[0][0]
+    cnn_pred = cnn_model.predict(padded_sequence, verbose=0)[0][0]
+    lstm_pred = lstm_model.predict(padded_sequence, verbose=0)[0][0]
+    rnn_pred = rnn_model.predict(padded_sequence, verbose=0)[0][0]
 
-    # Compute ensemble score
     weights = [0.33, 0.33, 0.34]
     ensemble_score = weights[0] * cnn_pred + weights[1] * lstm_pred + weights[2] * rnn_pred
-    threshold = 0.5
 
-    # Prepare predictions
     predictions = {
         'cnn': {
             'prediction': 'phishing' if cnn_pred > threshold else 'legitimate',
@@ -113,6 +91,28 @@ def predict():
             'confidence': round(float(ensemble_score), 4)
         }
     }
+
+    return predictions
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/team')
+def team():
+    return render_template('team.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'email' not in request.form:
+        return jsonify({'error': 'No email provided'}), 400
+
+    email_content = request.form['email']
+    predictions = predict_email(email_content, cnn_model, lstm_model, rnn_model, tokenizer, max_len=200, threshold=0.5)
 
     # Get VirusTotal results
     vt_results = check_virustotal(email_content)
